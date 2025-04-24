@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  hapifhir:
+    image: hapiproject/hapi:latest
+    container_name: hapifhir
+    ports:
+      - "8080:8080"
+    networks:
+      - app_network
+  nginx:
+    build: .
+    container_name: nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - hapifhir
+    networks:
+      - app_network
+
+
+networks:
+  app_network:
+    driver: bridge

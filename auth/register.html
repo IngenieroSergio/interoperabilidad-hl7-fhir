@@ -1,0 +1,140 @@
+<!-- auth/register.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediConnect - Registro de Médico</title>
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/auth.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <div class="logo">
+                    <div class="logo-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 16v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"></path>
+                            <path d="M12 7v4l2 2"></path>
+                            <path d="M19 9V7a2 2 0 0 0-2-2h-1"></path>
+                            <path d="M17 13h-2.5a1.5 1.5 0 0 0 0 3h2a1.5 1.5 0 0 1 0 3H14"></path>
+                        </svg>
+                    </div>
+                    MediConnect
+                </div>
+                <ul class="nav-links">
+                    <li><a href="../index.html">Inicio</a></li>
+                    <li><a href="#">Servicios</a></li>
+                    <li><a href="#">Acerca de</a></li>
+                    <li><a href="#">Contacto</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="auth-container">
+        <div class="auth-card register-card">
+            <div class="auth-header">
+                <h2>Registro de Médico</h2>
+                <p>Complete sus datos profesionales para registrarse en el sistema</p>
+            </div>
+
+            <form id="register-form" class="auth-form">
+                <div class="form-group">
+                    <label for="reg-name">Nombre completo</label>
+                    <input type="text" id="reg-name" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="reg-license">Número de licencia médica</label>
+                        <input type="text" id="reg-license" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg-specialty">Especialidad</label>
+                        <select id="reg-specialty" class="form-control" required>
+                            <option value="">Seleccionar especialidad</option>
+                            <option value="general">Medicina General</option>
+                            <option value="cardiology">Cardiología</option>
+                            <option value="neurology">Neurología</option>
+                            <option value="pediatrics">Pediatría</option>
+                            <option value="dermatology">Dermatología</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Correo electrónico profesional</label>
+                    <input type="email" id="reg-email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Contraseña</label>
+                    <div class="password-input">
+                        <input type="password" id="reg-password" class="form-control" required>
+                        <button type="button" class="toggle-password">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="password-strength">
+                        <div class="strength-bar">
+                            <div class="strength-indicator"></div>
+                        </div>
+                        <span class="strength-text">Fortaleza de contraseña</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="reg-confirm-password">Confirmar contraseña</label>
+                    <div class="password-input">
+                        <input type="password" id="reg-confirm-password" class="form-control" required>
+                        <button type="button" class="toggle-password">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group terms">
+                    <input type="checkbox" id="terms" required>
+                    <label for="terms">Acepto los <a href="#">términos del servicio</a> y confirmo que soy un profesional médico</label>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary btn-block">Registrarse como Médico</button>
+                </div>
+                <div id="register-error" class="error-message"></div>
+            </form>
+
+            <div class="auth-footer">
+                <p>¿Ya tiene una cuenta? <a href="login.html">Inicie sesión aquí</a></p>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>MediConnect</h3>
+                    <p>Sistema FHIR para gestión de profesionales médicos.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Enlaces</h3>
+                    <ul>
+                        <li><a href="../index.html">Inicio</a></li>
+                        <li><a href="#">Servicios</a></li>
+                        <li><a href="#">Acerca de</a></li>
+                        <li><a href="#">Contacto</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 MediConnect. Todos los derechos reservados.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../js/auth/register.js"></script>
+</body>
+</html>

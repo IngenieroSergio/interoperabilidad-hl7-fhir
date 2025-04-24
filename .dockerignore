@@ -1,0 +1,36 @@
+# Archivos de sistema y editores
+**/.DS_Store
+**/.idea
+**/.vscode
+**/*.swp
+**/*.swo
+
+# Archivos de control de versiones
+**/.git
+**/.gitignore
+**/.gitattributes
+
+# Archivos de dependencias y build
+**/node_modules
+**/dist
+**/build
+**/vendor
+
+# Archivos de Docker
+**/Dockerfile
+**/docker-compose.yml
+**/.dockerignore
+
+# Logs y archivos temporales
+**/logs
+**/*.log
+**/npm-debug.log*
+**/tmp
+**/.tmp
+**/temp
+**/.temp
+
+# Archivos de documentación
+**/README.md
+**/LICENSE
+**/CHANGELOG.md
