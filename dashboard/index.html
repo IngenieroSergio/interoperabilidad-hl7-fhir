@@ -191,7 +191,65 @@
             </div>
         </main>
     </div>
-
+    <!-- Modal para Nuevo Paciente -->
+<div id="new-patient-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Registrar Nuevo Paciente</h3>
+            <button class="close-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="patient-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="patient-given-name">Nombres</label>
+                        <input type="text" id="patient-given-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="patient-family-name">Apellidos</label>
+                        <input type="text" id="patient-family-name" class="form-control" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="patient-gender">Género</label>
+                        <select id="patient-gender" class="form-control" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="male">Masculino</option>
+                            <option value="female">Femenino</option>
+                            <option value="other">Otro</option>
+                            <option value="unknown">Desconocido</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="patient-birthdate">Fecha de Nacimiento</label>
+                        <input type="date" id="patient-birthdate" class="form-control" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="patient-identifier">Documento de Identidad</label>
+                    <input type="text" id="patient-identifier" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="patient-phone">Teléfono</label>
+                    <input type="tel" id="patient-phone" class="form-control">
+                </div>
+                
+                <div class="form-group">
+                    <label for="patient-address">Dirección</label>
+                    <textarea id="patient-address" class="form-control" rows="2"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary btn-block">Guardar Paciente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
     <script src="../js/dashboard/dashboard.js"></script>
 </body>
 </html>

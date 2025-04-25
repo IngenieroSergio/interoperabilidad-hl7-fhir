@@ -19,10 +19,188 @@ document.addEventListener('DOMContentLoaded', function() {
     loadDashboardData(practitionerId);
 
     // Manejadores de botones
-    document.getElementById('new-patient-btn').addEventListener('click', () => {
-        // Implementar lógica para nuevo paciente
-        alert('Funcionalidad de nuevo paciente será implementada');
+    // En la función principal del dashboard.js
+document.getElementById('new-patient-btn').addEventListener('click', () => {
+    openNewPatientModal();
+});
+
+// Agrega estas funciones al dashboard.js
+
+function openNewPatientModal() {
+    const modal = document.getElementById('new-patient-modal');
+    modal.style.display = 'flex';
+    
+    // Limpiar formulario al abrir
+    document.getElementById('patient-form').reset();
+    
+    // Configurar fecha por defecto (18 años atrás)
+    const defaultDate = new Date();
+    defaultDate.setFullYear(defaultDate.getFullYear() - 18);
+    document.getElementById('patient-birthdate').valueAsDate = defaultDate;
+    
+    // Manejar cierre del modal
+    document.querySelector('.close-modal').addEventListener('click', () => {
+        modal.style.display = 'none';
     });
+    
+    // Cerrar al hacer clic fuera del contenido
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+}
+
+// Manejador del formulario de paciente
+document.getElementById('patient-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const userData = JSON.parse(sessionStorage.getItem('currentMediConnectUser'));
+    if (!userData) {
+        showError('Sesión expirada. Por favor inicie sesión nuevamente.');
+        return;
+    }
+
+    // Obtener valores del formulario
+    const patientData = {
+        givenName: document.getElementById('patient-given-name').value.trim(),
+        familyName: document.getElementById('patient-family-name').value.trim(),
+        gender: document.getElementById('patient-gender').value,
+        birthDate: document.getElementById('patient-birthdate').value,
+        identifier: document.getElementById('patient-identifier').value.trim(),
+        phone: document.getElementById('patient-phone').value.trim(),
+        address: document.getElementById('patient-address').value.trim()
+    };
+
+    // Validaciones básicas
+    if (!patientData.givenName || !patientData.familyName || !patientData.gender || 
+        !patientData.birthDate || !patientData.identifier) {
+        showError('Por favor complete todos los campos requeridos');
+        return;
+    }
+
+    try {
+        // Crear recurso Patient para FHIR
+        const fhirPatient = createFhirPatientResource(patientData);
+        
+        // Enviar al servidor FHIR
+        const response = await fetch('http://localhost:8080/fhir/Patient', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/fhir+json',
+                'Accept': 'application/fhir+json'
+            },
+            body: JSON.stringify(fhirPatient)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.issue?.[0]?.details?.text || 'Error al registrar paciente');
+        }
+
+        const newPatient = await response.json();
+        
+        // Crear relación Practitioner-Patient (usando PractitionerRole)
+        await linkPatientToPractitioner(newPatient.id, userData.id);
+        
+        // Cerrar modal y actualizar lista
+        document.getElementById('new-patient-modal').style.display = 'none';
+        showSuccess('Paciente registrado exitosamente');
+        
+        // Actualizar lista de pacientes
+        const patients = await fetchPatients(userData.id);
+        updatePatientWidget(patients);
+        
+    } catch (error) {
+        console.error('Error registrando paciente:', error);
+        showError(error.message || 'Error al registrar paciente');
+    }
+});
+
+function createFhirPatientResource(patientData) {
+    // Construir recurso Patient según estándar FHIR
+    const patientResource = {
+        resourceType: "Patient",
+        active: true,
+        name: [{
+            use: "official",
+            given: [patientData.givenName],
+            family: patientData.familyName
+        }],
+        gender: patientData.gender,
+        birthDate: patientData.birthDate,
+        identifier: [{
+            system: "http://example.org/patient-identifier",
+            value: patientData.identifier
+        }],
+        telecom: [],
+        address: []
+    };
+
+    // Agregar teléfono si existe
+    if (patientData.phone) {
+        patientResource.telecom.push({
+            system: "phone",
+            value: patientData.phone,
+            use: "home"
+        });
+    }
+
+    // Agregar dirección si existe
+    if (patientData.address) {
+        patientResource.address.push({
+            use: "home",
+            text: patientData.address
+        });
+    }
+
+    return patientResource;
+}
+
+async function linkPatientToPractitioner(patientId, practitionerId) {
+    // Crear recurso PractitionerRole para establecer la relación
+    const practitionerRole = {
+        resourceType: "PractitionerRole",
+        active: true,
+        practitioner: {
+            reference: `Practitioner/${practitionerId}`
+        },
+        patient: {
+            reference: `Patient/${patientId}`
+        },
+        code: [{
+            coding: [{
+                system: "http://terminology.hl7.org/CodeSystem/practitioner-role",
+                code: "doctor",
+                display: "Doctor"
+            }]
+        }]
+    };
+
+    const response = await fetch('http://localhost:8080/fhir/PractitionerRole', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/fhir+json',
+            'Accept': 'application/fhir+json'
+        },
+        body: JSON.stringify(practitionerRole)
+    });
+
+    if (!response.ok) {
+        console.error('Error creando relación PractitionerRole:', await response.json());
+        throw new Error('Error al vincular paciente con médico');
+    }
+}
+
+function showSuccess(message) {
+    // Implementación básica - puedes usar un toast o notificación más elegante
+    alert(message);
+}
+
+function showError(message) {
+    // Implementación básica - puedes mejorar esto con un modal de error
+    alert(`Error: ${message}`);
+}
 
     document.getElementById('new-appointment-btn').addEventListener('click', () => {
         // Implementar lógica para nueva cita
