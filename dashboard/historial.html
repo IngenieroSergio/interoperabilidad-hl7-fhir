@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediConnect - Historial Clínico</title>
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/dashboard.css">
+    <link rel="stylesheet" href="../css/medical-history.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar (igual que en pacientes.html) -->
+        <aside class="dashboard-sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 16v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"></path>
+                            <path d="M12 7v4l2 2"></path>
+                            <path d="M19 9V7a2 2 0 0 0-2-2h-1"></path>
+                            <path d="M17 13h-2.5a1.5 1.5 0 0 0 0 3h2a1.5 1.5 0 0 1 0 3H14"></path>
+                        </svg>
+                    </div>
+                    MediConnect
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active">
+                        <a href="/dashboard/index.html">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                            </svg>
+                            Inicio
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/dashboard/pacientes.html">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                            Pacientes
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#citas">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                            </svg>
+                            Citas
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/dashboard/historial.html">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            Historial Clínico
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="avatar">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                    </div>
+                    <div class="user-info">
+                        <span class="user-name" id="sidebar-doctor-name">Dr. Nombre</span>
+                        <span class="user-email" id="sidebar-doctor-email">email@ejemplo.com</span>
+                    </div>
+                </div>
+                <a href="../auth/login.html" class="logout-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Cerrar Sesión
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="dashboard-content">
+            <header class="dashboard-header">
+                <h1>Historial Clínico</h1>
+                <div class="header-actions">
+                    <div class="patient-selector">
+                        <select id="patient-select" class="form-control">
+                            <option value="">Seleccionar paciente...</option>
+                            <!-- Opciones se cargarán dinámicamente -->
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" id="new-record-btn" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Nuevo Registro
+                    </button>
+                </div>
+            </header>
+
+            <div class="medical-history-container">
+                <!-- Resumen del paciente -->
+                <div class="patient-summary" id="patient-summary">
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                        </svg>
+                        <p>Seleccione un paciente para ver su historial clínico</p>
+                    </div>
+                </div>
+
+                <!-- Lista de registros clínicos -->
+                <div class="medical-records" id="medical-records">
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        <p>No hay registros clínicos para mostrar</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal para nuevo registro clínico -->
+    <div id="new-record-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nuevo Registro Clínico</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="record-form">
+                    <div class="form-group">
+                        <label for="record-date">Fecha de la consulta</label>
+                        <input type="datetime-local" id="record-date" class="form-control" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="record-type">Tipo de registro</label>
+                        <select id="record-type" class="form-control" required>
+                            <option value="">Seleccionar tipo...</option>
+                            <option value="consultation">Consulta médica</option>
+                            <option value="diagnosis">Diagnóstico</option>
+                            <option value="treatment">Tratamiento</option>
+                            <option value="observation">Observación</option>
+                            <option value="procedure">Procedimiento</option>
+                        </select>
+                    </div>
+                    
+                    <div id="diagnosis-fields" class="record-section" style="display: none;">
+                        <h4>Información de diagnóstico</h4>
+                        <div class="form-group">
+                            <label for="diagnosis-code">Código de diagnóstico (ICD-10)</label>
+                            <input type="text" id="diagnosis-code" class="form-control" placeholder="Ej: E11.9">
+                        </div>
+                        <div class="form-group">
+                            <label for="diagnosis-description">Descripción</label>
+                            <textarea id="diagnosis-description" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="diagnosis-severity">Severidad</label>
+                            <select id="diagnosis-severity" class="form-control">
+                                <option value="mild">Leve</option>
+                                <option value="moderate">Moderada</option>
+                                <option value="severe">Severa</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="treatment-fields" class="record-section" style="display: none;">
+                        <h4>Información de tratamiento</h4>
+                        <div class="form-group">
+                            <label for="treatment-medication">Medicamento</label>
+                            <input type="text" id="treatment-medication" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="treatment-dosage">Dosis</label>
+                            <input type="text" id="treatment-dosage" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="treatment-frequency">Frecuencia</label>
+                            <input type="text" id="treatment-frequency" class="form-control" placeholder="Ej: Cada 8 horas">
+                        </div>
+                        <div class="form-group">
+                            <label for="treatment-duration">Duración</label>
+                            <input type="text" id="treatment-duration" class="form-control" placeholder="Ej: 7 días">
+                        </div>
+                    </div>
+                    
+                    <div id="observation-fields" class="record-section" style="display: none;">
+                        <h4>Observaciones clínicas</h4>
+                        <div class="form-group">
+                            <label for="observation-code">Tipo de observación</label>
+                            <select id="observation-code" class="form-control">
+                                <option value="blood-pressure">Presión arterial</option>
+                                <option value="heart-rate">Frecuencia cardíaca</option>
+                                <option value="temperature">Temperatura</option>
+                                <option value="weight">Peso</option>
+                                <option value="height">Altura</option>
+                                <option value="other">Otro</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="observation-value">Valor</label>
+                                <input type="text" id="observation-value" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label for="observation-unit">Unidad</label>
+                                <input type="text" id="observation-unit" class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="observation-notes">Notas</label>
+                            <textarea id="observation-notes" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="record-notes">Notas generales</label>
+                        <textarea id="record-notes" class="form-control" rows="4"></textarea>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-record-btn">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Registro</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para ver detalles completos de un registro -->
+    <div id="record-detail-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Detalles del Registro Clínico</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="record-header">
+                    <h4 id="detail-record-type">Consulta médica</h4>
+                    <div class="record-date" id="detail-record-date">15/03/2023 10:30 AM</div>
+                </div>
+                
+                <div class="record-content" id="detail-record-content">
+                    <!-- Contenido se cargará dinámicamente -->
+                </div>
+                
+                <div class="record-footer">
+                    <button class="btn btn-primary" id="print-record-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                            <rect x="6" y="14" width="12" height="8"></rect>
+                        </svg>
+                        Imprimir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/dashboard/medical-history.js"></script>
+</body>
+</html>
