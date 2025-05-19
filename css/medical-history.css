@@ -5,11 +5,65 @@
     gap: 2rem;
 }
 
-.patient-selector {
+/* .patient-selector {
     flex: 1;
     max-width: 300px;
+} */
+
+/* /////////////////////////////////////////////// */
+/* Patient Selector Styles */
+/* .patient-selector {
+    margin-bottom: 0 rem;
+    width: 100%;
+} */
+
+.form-control {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    border: 2px solid var(--gray);
+    border-radius: 4px;
+    background-color: white;
+    color: var(--dark);
+    transition: all 0.3s ease;
+    outline: none;
+    appearance: none; /* Removes default browser styling */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2395A5A6' viewBox='0 0 16 16'><path d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: calc(100% - 1rem) center;
+    padding-right: 2.5rem;
 }
 
+.form-control:focus {
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 3px rgba(88, 176, 216, 0.25);
+}
+
+.form-control:hover {
+    border-color: var(--primary-light);
+}
+
+/* Styling the dropdown options */
+.form-control option {
+    padding: 0.5rem;
+    background-color: white;
+    color: var(--dark);
+}
+
+/* Add some responsiveness */
+@media (max-width: 768px) {
+    .patient-selector {
+        margin-bottom: 1rem;
+    }
+    
+    .form-control {
+        padding: 0.6rem 0.8rem;
+        font-size: 0.95rem;
+    }
+}
+/* /////////////////////////////////////////////// */
 .patient-summary {
     background-color: white;
     border-radius: 8px;
@@ -175,3 +229,5 @@
         max-width: 100%;
     }
 }
+
+/* //////////////////////////////// */
