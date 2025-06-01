@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const strengthText = document.querySelector('.strength-text');
     const errorMessage = document.getElementById('register-error');
     
+    // Configuración de Firebase
+    const FIREBASE_URL = 'https://hapi-fhir-16ed2-default-rtdb.firebaseio.com';
+    
     // Función para evaluar fortaleza de contraseña
     function evaluatePasswordStrength(password) {
         let score = 0;
@@ -67,51 +70,177 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Validar formulario de registro para FHIR
+    // Función para registrar en Firebase
+    async function registerInFirebase(practitionerData, email, passwordData, practitionerId) {
+        try {
+            // Estructura de datos para Firebase
+            const firebaseData = {
+                // Información del médico
+                practitioner: {
+                    id: practitionerId,
+                    name: practitionerData.name[0].text,
+                    license: practitionerData.identifier[0].value,
+                    specialty: practitionerData.qualification[0].code.coding[0].display,
+                    specialtyCode: practitionerData.qualification[0].code.coding[0].code,
+                    email: email,
+                    active: practitionerData.active,
+                    registrationDate: new Date().toISOString()
+                },
+                // Información de autenticación
+                auth: {
+                    email: email,
+                    passwordHash: passwordData.hash,
+                    passwordSalt: passwordData.salt,
+                    role: 'practitioner',
+                    lastLogin: null,
+                    isActive: true,
+                    loginAttempts: 0,
+                    lockedUntil: null
+                },
+                // Metadatos
+                metadata: {
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    source: 'registration_form',
+                    fhirServerId: practitionerId,
+                    ipAddress: 'localhost', // En producción, obtener IP real
+                    userAgent: navigator.userAgent
+                }
+            };
+            
+            // Registrar en Firebase usando el ID del practitioner como clave
+            const firebaseResponse = await fetch(`${FIREBASE_URL}/practitioners/${practitionerId}.json`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(firebaseData)
+            });
+            
+            if (!firebaseResponse.ok) {
+                const errorData = await firebaseResponse.text();
+                throw new Error(`Error de Firebase: ${errorData}`);
+            }
+            
+            // También mantener un índice por email para facilitar el login
+            const emailIndex = {
+                practitionerId: practitionerId,
+                email: email,
+                registrationDate: new Date().toISOString(),
+                isActive: true
+            };
+            
+            const emailKey = email.replace(/[.#$[\]]/g, '_'); // Firebase no permite ciertos caracteres
+            await fetch(`${FIREBASE_URL}/email_index/${emailKey}.json`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(emailIndex)
+            });
+            
+            return firebaseResponse.json();
+            
+        } catch (error) {
+            console.error('Error al registrar en Firebase:', error);
+            throw error;
+        }
+    }
+    
+    // Función para generar salt aleatorio
+    function generateSalt() {
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    
+    // Función para encriptar contraseña con salt
+    async function hashPassword(password, salt = null) {
+        // Generar un salt único si no se proporciona uno
+        const passwordSalt = salt || generateSalt();
+        
+        // Combinar contraseña con salt
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password + passwordSalt);
+        
+        // Generar hash SHA-256
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        return {
+            hash: hash,
+            salt: passwordSalt
+        };
+    }
+    
+    // Función para verificar contraseña (para usar en login)
+    async function verifyPassword(inputPassword, storedHash, storedSalt) {
+        const { hash } = await hashPassword(inputPassword, storedSalt);
+        return hash === storedHash;
+    }
+    
+    // Validar formulario de registro para FHIR y Firebase
     if (registerForm) {
         registerForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // Obtener valores del formulario
-            const name = document.getElementById('reg-name').value.trim();
-            const license = document.getElementById('reg-license').value.trim();
-            const specialty = document.getElementById('reg-specialty').value;
-            const email = document.getElementById('reg-email').value.trim();
-            const password = passwordInput.value;
-            const confirmPassword = confirmPasswordInput.value;
-            const terms = document.getElementById('terms').checked;
-            
-            // Validaciones básicas
-            if (!name || !license || !specialty || !email || !password || !confirmPassword) {
-                showError('Por favor, complete todos los campos');
-                return;
-            }
-            
-            // Validar formato de email
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                showError('Por favor, ingrese un correo electrónico válido');
-                return;
-            }
-            
-            // Validar que las contraseñas coincidan
-            if (password !== confirmPassword) {
-                showError('Las contraseñas no coinciden');
-                return;
-            }
-            
-            // Validar fortaleza de contraseña
-            const { score } = evaluatePasswordStrength(password);
-            if (score < 3) {
-                showError('La contraseña es demasiado débil. Debe incluir letras mayúsculas, minúsculas, números y tener al menos 8 caracteres.');
-                return;
-            }
-            
-            if (!terms) {
-                showError('Debe aceptar los términos del servicio');
-                return;
-            }
+            // Mostrar indicador de carga
+            const submitButton = registerForm.querySelector('button[type="submit"]');
+            const originalText = submitButton.textContent;
+            submitButton.textContent = 'Registrando...';
+            submitButton.disabled = true;
             
             try {
+                // Obtener valores del formulario
+                const name = document.getElementById('reg-name').value.trim();
+                const license = document.getElementById('reg-license').value.trim();
+                const specialty = document.getElementById('reg-specialty').value;
+                const email = document.getElementById('reg-email').value.trim();
+                const password = passwordInput.value;
+                const confirmPassword = confirmPasswordInput.value;
+                const terms = document.getElementById('terms').checked;
+                
+                // Validaciones básicas
+                if (!name || !license || !specialty || !email || !password || !confirmPassword) {
+                    showError('Por favor, complete todos los campos');
+                    return;
+                }
+                
+                // Validar formato de email
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    showError('Por favor, ingrese un correo electrónico válido');
+                    return;
+                }
+                
+                // Validar que las contraseñas coincidan
+                if (password !== confirmPassword) {
+                    showError('Las contraseñas no coinciden');
+                    return;
+                }
+                
+                // Validar fortaleza de contraseña
+                const { score } = evaluatePasswordStrength(password);
+                if (score < 3) {
+                    showError('La contraseña es demasiado débil. Debe incluir letras mayúsculas, minúsculas, números y tener al menos 8 caracteres.');
+                    return;
+                }
+                
+                if (!terms) {
+                    showError('Debe aceptar los términos del servicio');
+                    return;
+                }
+                
+                // Verificar si el email ya existe en Firebase
+                const emailKey = email.replace(/[.#$[\]]/g, '_');
+                const emailCheckResponse = await fetch(`${FIREBASE_URL}/email_index/${emailKey}.json`);
+                const existingEmail = await emailCheckResponse.json();
+                
+                if (existingEmail) {
+                    showError('Este correo electrónico ya está registrado');
+                    return;
+                }
+                
                 // Crear recurso Practitioner para FHIR
                 const practitionerData = {
                     resourceType: "Practitioner",
@@ -146,9 +275,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     }]
                 };
                 
-                // Enviar al servidor HAPI FHIR local
+                // Paso 1: Registrar en HAPI FHIR local
                 const fhirServerUrl = 'http://localhost:8080/fhir/Practitioner';
-                const response = await fetch(fhirServerUrl, {
+                const fhirResponse = await fetch(fhirServerUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/fhir+json',
@@ -157,14 +286,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify(practitionerData)
                 });
                 
-                if (!response.ok) {
-                    const errorData = await response.json();
+                if (!fhirResponse.ok) {
+                    const errorData = await fhirResponse.json();
                     throw new Error(errorData.issue?.[0]?.details?.text || 'Error al registrar el médico en el servidor FHIR');
                 }
                 
-                const practitioner = await response.json();
+                const practitioner = await fhirResponse.json();
                 
-                // Mostrar mensaje de éxito con ID de recurso FHIR
+                // Paso 2: Encriptar contraseña y registrar en Firebase
+                const passwordData = await hashPassword(password);
+                await registerInFirebase(practitionerData, email, passwordData, practitioner.id);
+                
+                // Paso 3: Mantener localStorage para compatibilidad
+                const users = JSON.parse(localStorage.getItem('mediconnect_users') || '[]');
+                users.push({
+                    email: email,
+                    practitionerId: practitioner.id
+                });
+                localStorage.setItem('mediconnect_users', JSON.stringify(users));
+                
+                // Mostrar mensaje de éxito
                 registerForm.innerHTML = `
                     <div class="success-message">
                         <div class="success-icon">
@@ -174,7 +315,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             </svg>
                         </div>
                         <h3>¡Médico registrado con éxito!</h3>
-                        <p>Su perfil ha sido creado en el sistema FHIR con ID: <strong>${practitioner.id}</strong></p>
+                        <p>Su perfil ha sido creado en:</p>
+                        <ul style="text-align: left; margin: 1rem 0;">
+                            <li><strong>Servidor FHIR local</strong> con ID: ${practitioner.id}</li>
+                            <li><strong>Base de datos Firebase</strong> para respaldo</li>
+                        </ul>
                         <p>Ahora puede iniciar sesión con su correo y contraseña.</p>
                         <div class="form-group">
                             <button type="button" class="btn btn-primary btn-block" onclick="window.location.href='login.html'">Continuar al Login</button>
@@ -182,17 +327,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 `;
                 
-                const users = JSON.parse(localStorage.getItem('mediconnect_users') || '[]');
-                users.push({
-                    email: email,
-                    password: password, // En producción NUNCA hagas esto
-                    practitionerId: practitioner.id
-                });
-                localStorage.setItem('mediconnect_users', JSON.stringify(users));
-                
             } catch (error) {
-                console.error('Error en el registro FHIR:', error);
+                console.error('Error en el registro:', error);
                 showError(`Error al registrar: ${error.message}`);
+                
+                // Restaurar botón
+                submitButton.textContent = originalText;
+                submitButton.disabled = false;
             }
         });
     }
@@ -217,6 +358,41 @@ document.addEventListener('DOMContentLoaded', function() {
             errorMessage.classList.remove('visible');
         }, 5000);
     }
-
-    
 });
+
+// Función auxiliar para consultar médicos desde Firebase (para uso futuro)
+async function getPractitionerFromFirebase(practitionerId) {
+    try {
+        const response = await fetch(`https://hapi-fhir-16ed2-default-rtdb.firebaseio.com/practitioners/${practitionerId}.json`);
+        if (!response.ok) {
+            throw new Error('Médico no encontrado en Firebase');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error al consultar Firebase:', error);
+        throw error;
+    }
+}
+
+// Función auxiliar para buscar médico por email (para login)
+async function getPractitionerByEmail(email) {
+    try {
+        const emailKey = email.replace(/[.#$[\]]/g, '_');
+        const response = await fetch(`https://hapi-fhir-16ed2-default-rtdb.firebaseio.com/email_index/${emailKey}.json`);
+        
+        if (!response.ok) {
+            throw new Error('Email no encontrado');
+        }
+        
+        const emailData = await response.json();
+        if (!emailData) {
+            throw new Error('Email no encontrado');
+        }
+        
+        // Obtener los datos completos del médico
+        return await getPractitionerFromFirebase(emailData.practitionerId);
+    } catch (error) {
+        console.error('Error al buscar médico por email:', error);
+        throw error;
+    }
+}
