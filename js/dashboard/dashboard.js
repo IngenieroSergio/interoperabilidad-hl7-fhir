@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('.logout-btn').addEventListener('click', function(e) {
         e.preventDefault();
         sessionStorage.removeItem('currentMediConnectUser');
-        localStorage.removeItem('dashboard_cache');
         window.location.href = '../auth/login.html';
     });
 
@@ -128,9 +127,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Paso 3: Crear relación Practitioner-Patient
             await linkPatientToPractitioner(newPatient.id, userData.id);
-            
-            // Paso 4: Actualizar localStorage para caché
-            updateLocalStoragePatients(newPatient, userData.id);
             
             // Cerrar modal y actualizar lista
             document.getElementById('new-patient-modal').style.display = 'none';
@@ -236,36 +232,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Función para actualizar localStorage
-    function updateLocalStoragePatients(patient, practitionerId) {
-        try {
-            const cacheKey = `patients_${practitionerId}`;
-            let cachedPatients = JSON.parse(localStorage.getItem(cacheKey) || '[]');
-            
-            const patientSummary = {
-                id: patient.id,
-                name: patient.name?.[0]?.text || `${patient.name?.[0]?.given?.join(' ')} ${patient.name?.[0]?.family}`,
-                identifier: patient.identifier?.[0]?.value,
-                gender: patient.gender,
-                birthDate: patient.birthDate,
-                cached: new Date().toISOString()
-            };
-
-            cachedPatients.unshift(patientSummary); // Agregar al inicio
-            cachedPatients = cachedPatients.slice(0, 50); // Mantener solo los últimos 50
-            
-            localStorage.setItem(cacheKey, JSON.stringify(cachedPatients));
-        } catch (error) {
-            console.error('Error actualizando caché local:', error);
-        }
-    }
-
     // Función principal para cargar datos del dashboard
     async function loadDashboardData(practitionerId) {
         try {
             showLoadingState();
             
-            // Intentar cargar desde FHIR primero, con Firebase como respaldo
+            // Cargar datos desde FHIR primero, con Firebase como respaldo
             const [patients, appointments, activity] = await Promise.allSettled([
                 fetchPatientsWithFallback(practitionerId),
                 fetchAppointmentsWithFallback(practitionerId),
@@ -303,36 +275,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Obtener pacientes con fallback a Firebase y localStorage
+    // Obtener pacientes con fallback a Firebase
     async function fetchPatientsWithFallback(practitionerId) {
         try {
             // Intentar FHIR primero
-            const fhirPatients = await fetchPatients(practitionerId);
-            
-            // Actualizar caché local
-            updateLocalStoragePatients({ patients: fhirPatients }, practitionerId);
-            
-            return fhirPatients;
+            return await fetchPatients(practitionerId);
         } catch (fhirError) {
             console.warn('FHIR no disponible, intentando Firebase:', fhirError);
             
             try {
                 // Intentar Firebase como respaldo
-                const firebasePatients = await fetchPatientsFromFirebase(practitionerId);
-                return firebasePatients;
+                return await fetchPatientsFromFirebase(practitionerId);
             } catch (firebaseError) {
-                console.warn('Firebase no disponible, usando caché local:', firebaseError);
-                
-                // Usar caché local como último recurso
-                const cachedPatients = JSON.parse(localStorage.getItem(`patients_${practitionerId}`) || '[]');
-                return cachedPatients.map(cached => ({
-                    id: cached.id,
-                    name: [{ text: cached.name }],
-                    gender: cached.gender,
-                    birthDate: cached.birthDate,
-                    identifier: [{ value: cached.identifier }],
-                    _cached: true
-                }));
+                console.error('Firebase tampoco disponible:', firebaseError);
+                throw new Error('No se pudieron cargar los pacientes desde ninguna fuente');
             }
         }
     }
@@ -415,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Funciones originales de FHIR (mantenidas)
+    // Funciones originales de FHIR
     async function fetchPatients(practitionerId) {
         const response = await fetch(`${FHIR_SERVER}/Patient?_has:PractitionerRole:practitioner:_id=${practitionerId}&_count=10`, {
             headers: { 'Accept': 'application/fhir+json' }
@@ -450,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return data.entry?.map(entry => entry.resource) || [];
     }
 
-    // Resto de funciones auxiliares y de UI
+    // Funciones auxiliares
     function createFhirPatientResource(patientData) {
         const patientResource = {
             resourceType: "Patient",
@@ -552,7 +508,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const birthDate = patient.birthDate ? new Date(patient.birthDate).toLocaleDateString() : 'N/A';
             const gender = patient.gender === 'male' ? 'Masculino' : patient.gender === 'female' ? 'Femenino' : 'Desconocido';
-            const sourceIndicator = patient._firebaseSource ? '🔄' : patient._cached ? '💾' : '🌐';
+            const sourceIndicator = patient._firebaseSource ? '🔄' : '🌐';
             
             patientsHTML += `
                 <div class="patient-item">
