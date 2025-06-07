@@ -1,18 +1,29 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Verificar autenticación
+    // 1. Verificación de autenticación
     const userData = JSON.parse(sessionStorage.getItem('currentMediConnectUser'));
     if (!userData) {
         window.location.href = '../auth/login.html';
         return;
     }
 
-    // Configuración FHIR
+    // 2. Configuración de servicios
     const FHIR_SERVER = 'http://localhost:8080/fhir';
+    const FIREBASE_DB_URL = 'https://hapi-fhir-16ed2-default-rtdb.firebaseio.com/';
     const PRACTITIONER_ID = userData.id;
     let currentPatient = null;
     let allRecords = [];
 
-    // Elementos del DOM
+    // 3. Inicialización de Firebase
+    const firebaseConfig = {
+        databaseURL: FIREBASE_DB_URL
+    };
+    
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const database = firebase.database();
+
+    // 4. Referencias a elementos del DOM
     const patientSelect = document.getElementById('patient-select');
     const newRecordBtn = document.getElementById('new-record-btn');
     const patientSummary = document.getElementById('patient-summary');
@@ -21,30 +32,56 @@ document.addEventListener('DOMContentLoaded', function() {
     const recordDetailModal = document.getElementById('record-detail-modal');
     const cancelRecordBtn = document.getElementById('cancel-record-btn');
 
-    // Inicializar
-    loadPatients();
-    setupEventListeners();
+    // 5. Inicialización de la aplicación
+    initApplication();
 
-    // Cargar lista de pacientes
+    async function initApplication() {
+        setupEventListeners();
+        await loadPractitionerData();
+        await loadPatients();
+    }
+
+    // 6. Cargar datos del médico
+    async function loadPractitionerData() {
+        try {
+            // Actualizar UI con datos del médico
+            document.getElementById('sidebar-doctor-name').textContent = `Dr. ${userData.name || 'Nombre'}`;
+            document.getElementById('sidebar-doctor-email').textContent = userData.email;
+            
+            // Verificar/crear registro del médico en Firebase
+            const practitionerRef = database.ref(`practitioners/${PRACTITIONER_ID}`);
+            const snapshot = await practitionerRef.once('value');
+            
+            if (!snapshot.exists()) {
+                await practitionerRef.set({
+                    email: userData.email,
+                    isActive: true,
+                    registrationDate: new Date().toISOString()
+                });
+            }
+        } catch (error) {
+            console.error('Error cargando datos del médico:', error);
+        }
+    }
+
+    // 7. Cargar lista de pacientes
     async function loadPatients() {
         try {
             showLoadingState();
             let patients = [];
             
-            // Estrategia 1: Buscar a través de PractitionerRole
+            // Primero intentamos cargar desde Firebase
             try {
-                const rolesResponse = await fetch(
-                    `${FHIR_SERVER}/PractitionerRole?practitioner=${PRACTITIONER_ID}&_count=100`,
-                    { headers: { 'Accept': 'application/fhir+json' } }
-                );
+                const snapshot = await database.ref('patient_identifiers').once('value');
+                const firebasePatients = snapshot.val();
                 
-                if (rolesResponse.ok) {
-                    const rolesData = await rolesResponse.json();
-                    const patientIds = rolesData.entry
-                        ?.map(entry => entry.resource.patient?.reference?.split('/')[1])
-                        .filter(id => id) || [];
+                if (firebasePatients) {
+                    const patientIds = Object.values(firebasePatients)
+                        .filter(patient => patient.practitionerId === PRACTITIONER_ID)
+                        .map(patient => patient.patientId);
                     
                     if (patientIds.length > 0) {
+                        // Obtener detalles de pacientes desde FHIR
                         const patientsResponse = await fetch(
                             `${FHIR_SERVER}/Patient?_id=${patientIds.join(',')}&_count=100`,
                             { headers: { 'Accept': 'application/fhir+json' } }
@@ -56,20 +93,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 }
-            } catch (e) {
-                console.log('Búsqueda por PractitionerRole falló, intentando método alternativo...', e);
+            } catch (firebaseError) {
+                console.log('Error al cargar pacientes desde Firebase:', firebaseError);
             }
             
-            // Estrategia 2: Si no hay resultados, buscar todos los pacientes
+            // Si no hay pacientes en Firebase, cargar desde FHIR
             if (patients.length === 0) {
-                const allPatientsResponse = await fetch(
-                    `${FHIR_SERVER}/Patient?_count=100`,
-                    { headers: { 'Accept': 'application/fhir+json' } }
-                );
+                patients = await loadPatientsFromFHIR();
                 
-                if (allPatientsResponse.ok) {
-                    const allPatientsData = await allPatientsResponse.json();
-                    patients = allPatientsData.entry?.map(entry => entry.resource) || [];
+                // Sincronizar pacientes con Firebase
+                if (patients.length > 0) {
+                    await syncPatientsToFirebase(patients);
                 }
             }
             
@@ -85,23 +119,85 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Actualizar selector de pacientes
-    function updatePatientSelect(patients) {
-        patientSelect.innerHTML = '<option value="">Seleccionar paciente...</option>';
+    // 8. Cargar pacientes desde FHIR
+    async function loadPatientsFromFHIR() {
+        let patients = [];
         
-        patients.forEach(patient => {
-            const name = getPatientName(patient);
-            const identifier = patient.identifier?.[0]?.value || 'Sin ID';
+        // Estrategia 1: Buscar a través de PractitionerRole
+        try {
+            const rolesResponse = await fetch(
+                `${FHIR_SERVER}/PractitionerRole?practitioner=${PRACTITIONER_ID}&_count=100`,
+                { headers: { 'Accept': 'application/fhir+json' } }
+            );
             
-            const option = document.createElement('option');
-            option.value = patient.id;
-            option.textContent = `${name} (${identifier})`;
-            option.setAttribute('data-patient-id', patient.id);
-            patientSelect.appendChild(option);
-        });
+            if (rolesResponse.ok) {
+                const rolesData = await rolesResponse.json();
+                const patientIds = rolesData.entry
+                    ?.map(entry => entry.resource.patient?.reference?.split('/')[1])
+                    .filter(id => id) || [];
+                
+                if (patientIds.length > 0) {
+                    const patientsResponse = await fetch(
+                        `${FHIR_SERVER}/Patient?_id=${patientIds.join(',')}&_count=100`,
+                        { headers: { 'Accept': 'application/fhir+json' } }
+                    );
+                    
+                    if (patientsResponse.ok) {
+                        const patientsData = await patientsResponse.json();
+                        patients = patientsData.entry?.map(entry => entry.resource) || [];
+                    }
+                }
+            }
+        } catch (e) {
+            console.log('Búsqueda por PractitionerRole falló:', e);
+        }
+        
+        // Estrategia 2: Si no hay resultados, buscar todos los pacientes
+        if (patients.length === 0) {
+            const allPatientsResponse = await fetch(
+                `${FHIR_SERVER}/Patient?_count=100`,
+                { headers: { 'Accept': 'application/fhir+json' } }
+            );
+            
+            if (allPatientsResponse.ok) {
+                const allPatientsData = await allPatientsResponse.json();
+                patients = allPatientsData.entry?.map(entry => entry.resource) || [];
+            }
+        }
+        
+        return patients;
     }
 
-    // Configurar event listeners
+    // 9. Sincronizar pacientes con Firebase
+    async function syncPatientsToFirebase(patients) {
+        try {
+            for (const patient of patients) {
+                const patientId = patient.id;
+                const identifier = patient.identifier?.[0]?.value;
+                
+                if (identifier) {
+                    // Guardar relación paciente-médico en Firebase
+                    await database.ref(`patient_identifiers/${identifier}`).set({
+                        patientId: patientId,
+                        practitionerId: PRACTITIONER_ID,
+                        registrationDate: new Date().toISOString()
+                    });
+                    
+                    // Guardar metadatos del paciente en Firebase
+                    await database.ref(`patients/${patientId}/metadata`).set({
+                        name: getPatientName(patient),
+                        gender: patient.gender,
+                        birthDate: patient.birthDate,
+                        lastUpdated: new Date().toISOString()
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error sincronizando pacientes con Firebase:', error);
+        }
+    }
+
+    // 10. Configurar event listeners
     function setupEventListeners() {
         // Selección de paciente
         patientSelect.addEventListener('change', async (e) => {
@@ -122,7 +218,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (currentPatient) openNewRecordModal();
         });
 
-        // Cerrar modales con botón X
+        // Cerrar modales
         document.querySelectorAll('.close-modal').forEach(btn => {
             btn.addEventListener('click', function() {
                 newRecordModal.style.display = 'none';
@@ -173,12 +269,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Cargar datos del paciente seleccionado
+    // 11. Cargar datos del paciente seleccionado
     async function loadPatientData(patientId) {
         try {
             showLoadingState();
             
-            // Obtener información del paciente
+            // Obtener información del paciente desde FHIR
             const patientResponse = await fetch(
                 `${FHIR_SERVER}/Patient/${patientId}`,
                 { headers: { 'Accept': 'application/fhir+json' } }
@@ -188,22 +284,32 @@ document.addEventListener('DOMContentLoaded', function() {
             
             currentPatient = await patientResponse.json();
             
-            // Obtener encuentros (consultas) del paciente
-            const encountersResponse = await fetch(
-                `${FHIR_SERVER}/Encounter?patient=${patientId}&_sort=-date&_count=100`,
-                { headers: { 'Accept': 'application/fhir+json' } }
-            );
+            // Intentar cargar registros desde Firebase primero
+            let recordsFromFirebase = await loadRecordsFromFirebase(patientId);
             
-            if (!encountersResponse.ok) throw new Error('Error al cargar historial');
-            
-            const encountersData = await encountersResponse.json();
-            const encounters = encountersData.entry?.map(entry => entry.resource) || [];
-            
-            // Para cada encuentro, obtener diagnósticos, observaciones, etc.
-            allRecords = [];
-            for (const encounter of encounters) {
-                const record = await buildFullRecord(encounter);
-                allRecords.push(record);
+            if (recordsFromFirebase && recordsFromFirebase.length > 0) {
+                allRecords = recordsFromFirebase;
+            } else {
+                // Si no hay registros en Firebase, cargar desde FHIR
+                const encountersResponse = await fetch(
+                    `${FHIR_SERVER}/Encounter?patient=${patientId}&_sort=-date&_count=100`,
+                    { headers: { 'Accept': 'application/fhir+json' } }
+                );
+                
+                if (!encountersResponse.ok) throw new Error('Error al cargar historial');
+                
+                const encountersData = await encountersResponse.json();
+                const encounters = encountersData.entry?.map(entry => entry.resource) || [];
+                
+                // Para cada encuentro, obtener diagnósticos, observaciones, etc.
+                allRecords = [];
+                for (const encounter of encounters) {
+                    const record = await buildFullRecord(encounter);
+                    allRecords.push(record);
+                }
+                
+                // Guardar registros en Firebase para futuras consultas
+                await saveRecordsToFirebase(patientId, allRecords);
             }
             
             updatePatientSummary(currentPatient);
@@ -215,7 +321,54 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Construir registro completo con información relacionada
+    // 12. Cargar registros desde Firebase
+    async function loadRecordsFromFirebase(patientId) {
+        try {
+            const snapshot = await database.ref(`patients/${patientId}/records`).once('value');
+            const records = snapshot.val();
+            
+            if (records) {
+                return Object.values(records).map(record => {
+                    record.fromFirebase = true; // Marcar como proveniente de Firebase
+                    return {
+                        encounter: record.encounter,
+                        conditions: record.conditions || [],
+                        observations: record.observations || [],
+                        medications: record.medications || []
+                    };
+                });
+            }
+            return null;
+        } catch (error) {
+            console.error('Error cargando registros desde Firebase:', error);
+            return null;
+        }
+    }
+
+    // 13. Guardar registros en Firebase
+    async function saveRecordsToFirebase(patientId, records) {
+        try {
+            const recordsRef = database.ref(`patients/${patientId}/records`);
+            
+            // Convertir el array de registros a un objeto para Firebase
+            const recordsObject = {};
+            records.forEach((record, index) => {
+                recordsObject[`record_${index}`] = {
+                    encounter: record.encounter,
+                    conditions: record.conditions,
+                    observations: record.observations,
+                    medications: record.medications,
+                    lastUpdated: new Date().toISOString()
+                };
+            });
+            
+            await recordsRef.set(recordsObject);
+        } catch (error) {
+            console.error('Error guardando registros en Firebase:', error);
+        }
+    }
+
+    // 14. Construir registro completo con información relacionada
     async function buildFullRecord(encounter) {
         const record = {
             encounter: encounter,
@@ -272,7 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return record;
     }
 
-    // Actualizar resumen del paciente
+    // 15. Actualizar resumen del paciente
     function updatePatientSummary(patient) {
         const name = getPatientName(patient);
         const gender = getGenderDisplay(patient.gender);
@@ -314,7 +467,7 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    // Actualizar lista de registros médicos
+    // 16. Actualizar lista de registros médicos
     function updateMedicalRecords(records) {
         if (records.length === 0) {
             medicalRecords.innerHTML = `
@@ -349,10 +502,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 previewText = 'Consulta sin detalles registrados';
             }
             
+            // Agregar indicador de origen (FHIR o Firebase)
+            const source = record.fromFirebase ? ' (Firebase)' : ' (FHIR)';
+            
             return `
                 <div class="record-item" data-record-index="${index}">
                     <div class="record-header">
-                        <span class="record-type">${type}</span>
+                        <span class="record-type">${type}${source}</span>
                         <span class="record-date">${date}</span>
                     </div>
                     <div class="record-preview">${previewText}</div>
@@ -370,7 +526,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Mostrar detalles completos de un registro
+    // 17. Mostrar detalles completos de un registro
     function showRecordDetails(record) {
         const encounter = record.encounter;
         const recordDate = encounter.period?.start ? formatDateTime(encounter.period.start) : 'Fecha desconocida';
@@ -445,7 +601,7 @@ document.addEventListener('DOMContentLoaded', function() {
         recordDetailModal.style.display = 'flex';
     }
 
-    // Abrir modal de nuevo registro
+    // 18. Abrir modal de nuevo registro
     function openNewRecordModal() {
         const form = document.getElementById('record-form');
         
@@ -466,7 +622,7 @@ document.addEventListener('DOMContentLoaded', function() {
         newRecordModal.style.display = 'flex';
     }
 
-    // Guardar nuevo registro médico
+    // 19. Guardar nuevo registro médico
     async function saveMedicalRecord() {
         const form = document.getElementById('record-form');
         const recordType = document.getElementById('record-type').value;
@@ -483,12 +639,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const encounter = await createEncounter(recordDate);
             
             // 2. Crear recursos según el tipo de registro
+            let newCondition = null;
+            let newMedication = null;
+            let newObservation = null;
+            
             if (recordType === 'diagnosis') {
-                await createDiagnosis(encounter);
+                newCondition = await createDiagnosis(encounter);
             } else if (recordType === 'treatment') {
-                await createTreatment(encounter);
+                newMedication = await createTreatment(encounter);
             } else if (recordType === 'observation') {
-                await createObservation(encounter);
+                newObservation = await createObservation(encounter);
             }
             
             // 3. Agregar notas generales si existen
@@ -496,10 +656,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 await updateEncounterWithNotes(encounter.id, notes);
             }
             
-            // 4. Recargar datos del paciente
-            await loadPatientData(currentPatient.id);
+            // 4. Construir el nuevo registro para Firebase
+            const newRecord = {
+                encounter: encounter,
+                conditions: newCondition ? [newCondition] : [],
+                observations: newObservation ? [newObservation] : [],
+                medications: newMedication ? [newMedication] : [],
+                lastUpdated: new Date().toISOString()
+            };
             
-            // 5. Cerrar modal
+            // 5. Agregar el nuevo registro a Firebase
+            const newRecordRef = database.ref(`patients/${currentPatient.id}/records`).push();
+            await newRecordRef.set(newRecord);
+            
+            // 6. Actualizar la lista de registros localmente
+            allRecords.unshift(newRecord);
+            updateMedicalRecords(allRecords);
+            
+            // 7. Cerrar modal
             newRecordModal.style.display = 'none';
             
         } catch (error) {
@@ -508,7 +682,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Crear un Encounter en FHIR
+    // 20. Funciones para crear recursos FHIR
     async function createEncounter(dateTime) {
         const encounterData = {
             resourceType: "Encounter",
@@ -549,7 +723,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return await response.json();
     }
 
-    // Crear un Diagnosis (Condition) en FHIR
     async function createDiagnosis(encounter) {
         const code = document.getElementById('diagnosis-code').value;
         const description = document.getElementById('diagnosis-description').value;
@@ -612,7 +785,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return await response.json();
     }
 
-    // Crear un Treatment (MedicationRequest) en FHIR
     async function createTreatment(encounter) {
         const medication = document.getElementById('treatment-medication').value;
         const dosage = document.getElementById('treatment-dosage').value;
@@ -669,7 +841,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return await response.json();
     }
 
-    // Crear una Observation en FHIR
     async function createObservation(encounter) {
         const observationType = document.getElementById('observation-code').value;
         const value = document.getElementById('observation-value').value;
@@ -751,9 +922,9 @@ document.addEventListener('DOMContentLoaded', function() {
         return await response.json();
     }
 
-    // Actualizar un Encounter con notas
+    // 21. Actualizar un Encounter con notas
     async function updateEncounterWithNotes(encounterId, notes) {
-        // Primero obtenemos el recurso actual para no sobrescribir datos existentes
+        // Primero obtenemos el recurso actual
         const getResponse = await fetch(`${FHIR_SERVER}/Encounter/${encounterId}`, {
             headers: { 'Accept': 'application/fhir+json' }
         });
@@ -779,7 +950,6 @@ document.addEventListener('DOMContentLoaded', function() {
             body: JSON.stringify(encounterResource)
         });
         
-        // Continuar desde donde se cortó el código (dentro de la función updateEncounterWithNotes)
         if (!updateResponse.ok) {
             const error = await updateResponse.json();
             throw new Error(error.issue?.[0]?.diagnostics || 'Error al actualizar consulta con notas');
@@ -788,7 +958,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return await updateResponse.json();
     }
 
-    // Limpiar datos del paciente
+    // 22. Funciones auxiliares de UI
     function clearPatientData() {
         currentPatient = null;
         allRecords = [];
@@ -804,7 +974,6 @@ document.addEventListener('DOMContentLoaded', function() {
         medicalRecords.innerHTML = '';
     }
 
-    // Mostrar estado de carga
     function showLoadingState() {
         patientSummary.innerHTML = `
             <div class="loading-state">
@@ -814,7 +983,6 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
     }
 
-    // Mostrar mensaje de error
     function showError(message) {
         patientSummary.innerHTML = `
             <div class="error-state">
@@ -823,289 +991,145 @@ document.addEventListener('DOMContentLoaded', function() {
                     <line x1="12" y1="8" x2="12" y2="12"></line>
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
-                <p>${message}</p>
-            </div>
-        `;
-    }
-
-    // Mostrar mensaje informativo
+                    <p>${message}</p>
+                    </div>`;
+    }           
     function showInfo(message) {
-        patientSummary.innerHTML = `
-            <div class="info-state">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                </svg>
-                <p>${message}</p>
-            </div>
-        `;
+    patientSummary.innerHTML = `
+        <div class="info-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <p>${message}</p>
+        </div>
+    `;
+}
+
+// 23. Funciones utilitarias
+function getPatientName(patient) {
+    if (!patient || !patient.name || patient.name.length === 0) {
+        return 'Sin nombre registrado';
     }
+    
+    const name = patient.name[0];
+    const given = name.given || [];
+    const family = name.family || '';
+    
+    return `${given.join(' ')} ${family}`.trim();
+}
 
-    // Funciones auxiliares
+function getInitials(name) {
+    if (!name || name === 'Sin nombre registrado') return '?';
+    
+    return name
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase())
+        .slice(0, 2)
+        .join('');
+}
 
-    // Obtener nombre del paciente
-    function getPatientName(patient) {
-        if (!patient || !patient.name || patient.name.length === 0) {
-            return 'Sin nombre registrado';
-        }
-        
-        const name = patient.name[0];
-        const given = name.given || [];
-        const family = name.family || '';
-        
-        return `${given.join(' ')} ${family}`.trim();
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    
+    return `${day}/${month}/${year}`;
+}
+
+function formatDateTime(dateTimeString) {
+    if (!dateTimeString) return 'N/A';
+    
+    const date = new Date(dateTimeString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+}
+
+function calculateAge(birthDateString) {
+    const birthDate = new Date(birthDateString);
+    const today = new Date();
+    
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
     }
+    
+    return age;
+}
 
-    // Obtener iniciales del nombre
-    function getInitials(name) {
-        if (!name || name === 'Sin nombre registrado') return '?';
-        
-        return name
-            .split(' ')
-            .map(word => word.charAt(0).toUpperCase())
-            .slice(0, 2)
-            .join('');
-    }
+function getGenderDisplay(gender) {
+    const genderMap = {
+        'male': 'Masculino',
+        'female': 'Femenino',
+        'other': 'Otro',
+        'unknown': 'No especificado'
+    };
+    
+    return genderMap[gender] || 'No especificado';
+}
 
-    // Formatear fecha
-    function formatDate(dateString) {
-        if (!dateString) return 'N/A';
-        
-        const date = new Date(dateString);
-        const day = date.getDate().toString().padStart(2, '0');
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const year = date.getFullYear();
-        
-        return `${day}/${month}/${year}`;
-    }
+function getEncounterTypeDisplay(code) {
+    const encounterTypes = {
+        'AMB': 'Consulta ambulatoria',
+        'EMER': 'Emergencia',
+        'HH': 'Atención domiciliaria',
+        'IMP': 'Hospitalización',
+        'ACUTE': 'Cuidado agudo',
+        'NONAC': 'Cuidado no agudo',
+        'OBSENC': 'Observación',
+        'PRENC': 'Pre-admisión',
+        'SS': 'Consulta breve',
+        'VR': 'Consulta virtual'
+    };
+    
+    return encounterTypes[code] || 'Consulta médica';
+}
 
-    // Formatear fecha y hora
-    function formatDateTime(dateTimeString) {
-        if (!dateTimeString) return 'N/A';
-        
-        const date = new Date(dateTimeString);
-        const day = date.getDate().toString().padStart(2, '0');
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const year = date.getFullYear();
-        const hours = date.getHours().toString().padStart(2, '0');
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        
-        return `${day}/${month}/${year} ${hours}:${minutes}`;
-    }
+// 24. Manejo de cierre de sesión
+document.querySelector('.logout-btn').addEventListener('click', function() {
+    sessionStorage.removeItem('currentMediConnectUser');
+    window.location.href = '../auth/login.html';
+});
 
-    // Calcular edad basada en fecha de nacimiento
-    function calculateAge(birthDateString) {
-        const birthDate = new Date(birthDateString);
-        const today = new Date();
+// 25. Inicialización de componentes UI
+function updatePatientSelect(patients) {
+    patientSelect.innerHTML = '<option value="">Seleccionar paciente...</option>';
+    
+    patients.forEach(patient => {
+        const name = getPatientName(patient);
+        const identifier = patient.identifier?.[0]?.value || 'Sin ID';
         
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-        
-        return age;
-    }
-
-    // Mostrar texto para género
-    function getGenderDisplay(gender) {
-        const genderMap = {
-            'male': 'Masculino',
-            'female': 'Femenino',
-            'other': 'Otro',
-            'unknown': 'No especificado'
-        };
-        
-        return genderMap[gender] || 'No especificado';
-    }
-
-    // Mostrar tipo de consulta
-    function getEncounterTypeDisplay(code) {
-        const encounterTypes = {
-            'AMB': 'Consulta ambulatoria',
-            'EMER': 'Emergencia',
-            'HH': 'Atención domiciliaria',
-            'IMP': 'Hospitalización',
-            'ACUTE': 'Cuidado agudo',
-            'NONAC': 'Cuidado no agudo',
-            'OBSENC': 'Observación',
-            'PRENC': 'Pre-admisión',
-            'SS': 'Consulta breve',
-            'VR': 'Consulta virtual'
-        };
-        
-        return encounterTypes[code] || 'Consulta médica';
-    }
-
-    // Manejar cierre de sesión
-    document.getElementById('logout-btn')?.addEventListener('click', function() {
-        sessionStorage.removeItem('currentMediConnectUser');
-        window.location.href = '../auth/login.html';
+        const option = document.createElement('option');
+        option.value = patient.id;
+        option.textContent = `${name} (${identifier})`;
+        option.setAttribute('data-patient-id', patient.id);
+        patientSelect.appendChild(option);
     });
+}
 
-    // Función para exportar historia clínica en formato PDF
-    document.getElementById('export-medical-history-btn')?.addEventListener('click', function() {
-        if (!currentPatient) {
-            alert('Seleccione un paciente primero');
-            return;
-        }
-        
-        alert('Función de exportación a PDF en desarrollo');
-        // TODO: Implementar exportación a PDF usando una biblioteca como jsPDF
-    });
+// 26. Manejo de eventos adicionales
+window.addEventListener('online', () => {
+    showInfo('Conexión a internet restaurada.');
+    // Opcional: sincronizar datos pendientes
+});
 
-    // Búsqueda de pacientes
-    const searchInput = document.getElementById('search-patient');
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase();
-            const options = patientSelect.options;
-            
-            for (let i = 1; i < options.length; i++) {
-                const optionText = options[i].textContent.toLowerCase();
-                if (optionText.includes(searchTerm)) {
-                    options[i].style.display = '';
-                } else {
-                    options[i].style.display = 'none';
-                }
-            }
-        });
-    }
+window.addEventListener('offline', () => {
+    showError('Conexión a internet perdida. Algunas funciones pueden no estar disponibles.');
+});
 
-    // Funcionalidad para filtrar registros médicos
-    const filterSelect = document.getElementById('filter-records');
-    if (filterSelect) {
-        filterSelect.addEventListener('change', function() {
-            const filterValue = this.value;
-            const recordItems = document.querySelectorAll('.record-item');
-            
-            recordItems.forEach(item => {
-                const recordIndex = item.dataset.recordIndex;
-                const record = allRecords[recordIndex];
-                
-                // Filtrar según el tipo seleccionado
-                if (filterValue === 'all') {
-                    item.style.display = '';
-                } else if (filterValue === 'diagnosis' && record.conditions.length > 0) {
-                    item.style.display = '';
-                } else if (filterValue === 'treatment' && record.medications.length > 0) {
-                    item.style.display = '';
-                } else if (filterValue === 'observation' && record.observations.length > 0) {
-                    item.style.display = '';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-        });
-    }
-
-    // Manejar errores de conexión con el servidor FHIR
-    window.addEventListener('offline', () => {
-        showError('Conexión a internet perdida. Algunas funciones pueden no estar disponibles.');
-    });
-
-    window.addEventListener('online', () => {
-        showInfo('Conexión a internet restaurada.');
-    });
-
-    // Validar campos del formulario de nuevo registro
-    document.getElementById('record-form').addEventListener('input', function(e) {
-        const submitBtn = document.getElementById('save-record-btn');
-        const recordType = document.getElementById('record-type').value;
-        const recordDate = document.getElementById('record-date').value;
-        
-        let isValid = recordType && recordDate;
-        
-        // Validaciones específicas según el tipo de registro
-        if (recordType === 'diagnosis') {
-            const description = document.getElementById('diagnosis-description').value;
-            isValid = isValid && description;
-        } else if (recordType === 'treatment') {
-            const medication = document.getElementById('treatment-medication').value;
-            isValid = isValid && medication;
-        } else if (recordType === 'observation') {
-            const value = document.getElementById('observation-value').value;
-            isValid = isValid && value;
-        }
-        
-        submitBtn.disabled = !isValid;
-    });
-
-    // Manejo de estado activo para navegación
-    const navItems = document.querySelectorAll('.nav-item');
-    navItems.forEach(item => {
-        if (window.location.href.includes(item.getAttribute('href'))) {
-            item.classList.add('active');
-        }
-        
-        item.addEventListener('click', function() {
-            navItems.forEach(i => i.classList.remove('active'));
-            this.classList.add('active');
-        });
-    });
-
-    // Obtener últimos valores vitales para mostrar en la vista de resumen
-    async function getLatestVitalSigns() {
-        if (!currentPatient) return null;
-        
-        try {
-            const response = await fetch(
-                `${FHIR_SERVER}/Observation?patient=${currentPatient.id}&category=vital-signs&_count=5&_sort=-date`,
-                { headers: { 'Accept': 'application/fhir+json' } }
-            );
-            
-            if (!response.ok) return null;
-            
-            const data = await response.json();
-            return data.entry?.map(entry => entry.resource) || [];
-        } catch (e) {
-            console.error('Error cargando signos vitales:', e);
-            return null;
-        }
-    }
-
-    // Obtener los diagnósticos activos más recientes
-    async function getActiveConditions() {
-        if (!currentPatient) return null;
-        
-        try {
-            const response = await fetch(
-                `${FHIR_SERVER}/Condition?patient=${currentPatient.id}&clinical-status=active&_count=5&_sort=-date`,
-                { headers: { 'Accept': 'application/fhir+json' } }
-            );
-            
-            if (!response.ok) return null;
-            
-            const data = await response.json();
-            return data.entry?.map(entry => entry.resource) || [];
-        } catch (e) {
-            console.error('Error cargando condiciones activas:', e);
-            return null;
-        }
-    }
-
-    // Funcionalidad para verificar conexión con servidor FHIR
-    async function checkFHIRServerConnection() {
-        try {
-            const response = await fetch(`${FHIR_SERVER}/metadata`, {
-                headers: { 'Accept': 'application/fhir+json' }
-            });
-            
-            return response.ok;
-        } catch (e) {
-            console.error('Error de conexión con servidor FHIR:', e);
-            return false;
-        }
-    }
-
-    // Iniciar comprobación de estado del servidor
-    (async function() {
-        const isServerConnected = await checkFHIRServerConnection();
-        
-        if (!isServerConnected) {
-            showError('No se pudo conectar al servidor FHIR. Verifique que el servidor esté en funcionamiento y vuelva a cargar la página.');
-        }
-    })();
+// 27. Inicialización de tooltips y otros componentes UI
+// $(document).ready(function() {
+//     $('[data-toggle="tooltip"]').tooltip();
+// });
 });
