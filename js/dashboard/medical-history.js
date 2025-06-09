@@ -1,4 +1,7 @@
+document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>');
+document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>');
 document.addEventListener('DOMContentLoaded', function() {
+    // Agregar al inicio del archivo, después de las otras dependencias
     // 1. Verificación de autenticación
     const userData = JSON.parse(sessionStorage.getItem('currentMediConnectUser'));
     if (!userData) {
@@ -224,6 +227,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else {
                 newRecordBtn.disabled = true;
+                clearPatientData();
+            }
+        });
+
+                // Botón de descargar HC
+        document.getElementById('download-hc-btn').addEventListener('click', generateAndDownloadHC);
+        
+        // Actualizar estado del botón de descarga cuando se selecciona un paciente
+        patientSelect.addEventListener('change', async (e) => {
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            const patientId = selectedOption.dataset.patientId;
+            
+            if (patientId) {
+                newRecordBtn.disabled = false;
+                document.getElementById('download-hc-btn').disabled = false;
+                // ... (resto del código existente)
+            } else {
+                newRecordBtn.disabled = true;
+                document.getElementById('download-hc-btn').disabled = true;
                 clearPatientData();
             }
         });
@@ -1429,4 +1451,215 @@ function updatePatientSelect(patients) {
     window.addEventListener('offline', () => {
         showError('Conexión a internet perdida. Algunas funciones pueden no estar disponibles.');
     });
+
+        // 25. Función para generar y descargar el historial clínico en PDF
+    function generateAndDownloadHC() {
+        if (!currentPatient || allRecords.length === 0) {
+            alert('No hay datos del paciente para generar el historial clínico');
+            return;
+        }
+
+        // Crear instancia de jsPDF
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Configuración inicial del documento
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 15;
+        const lineHeight = 7;
+        let yPosition = margin;
+        
+        // Estilos
+        const titleStyle = { fontSize: 16, fontStyle: 'bold' };
+        const subtitleStyle = { fontSize: 12, fontStyle: 'bold' };
+        const normalStyle = { fontSize: 10 };
+        const smallStyle = { fontSize: 8 };
+        
+        // 1. Encabezado del documento
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(titleStyle.fontSize);
+        doc.text('HISTORIAL CLÍNICO', pageWidth / 2, yPosition, { align: 'center' });
+        yPosition += lineHeight * 1.5;
+        
+        // 2. Información del paciente
+        doc.setFontSize(subtitleStyle.fontSize);
+        doc.text('DATOS DEL PACIENTE', margin, yPosition);
+        yPosition += lineHeight;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(normalStyle.fontSize);
+        
+        const patientName = getPatientName(currentPatient);
+        const patientGender = getGenderDisplay(currentPatient.gender);
+        const patientBirthDate = currentPatient.birthDate ? formatDate(currentPatient.birthDate) : 'N/A';
+        const patientAge = currentPatient.birthDate ? calculateAge(currentPatient.birthDate) : 'N/A';
+        const patientId = currentPatient.identifier?.[0]?.value || 'N/A';
+        
+        doc.text(`Nombre: ${patientName}`, margin, yPosition);
+        yPosition += lineHeight;
+        doc.text(`Género: ${patientGender}`, margin, yPosition);
+        yPosition += lineHeight;
+        doc.text(`Fecha de nacimiento: ${patientBirthDate} (${patientAge} años)`, margin, yPosition);
+        yPosition += lineHeight;
+        doc.text(`Identificación: ${patientId}`, margin, yPosition);
+        yPosition += lineHeight * 1.5;
+        
+        // 3. Resumen estadístico
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(subtitleStyle.fontSize);
+        doc.text('RESUMEN ESTADÍSTICO', margin, yPosition);
+        yPosition += lineHeight;
+        
+        doc.setFont('helvetica', 'normal');
+        
+        // Calcular estadísticas (similar a updatePatientSummary)
+        const totalConsultas = allRecords.length;
+        
+        const diagnosticosUnicos = new Set();
+        allRecords.forEach(record => {
+            record.conditions?.forEach(condition => {
+                const codigo = condition.code?.coding?.[0]?.code || condition.code?.text;
+                if (codigo) diagnosticosUnicos.add(codigo);
+            });
+        });
+        const totalDiagnosticos = diagnosticosUnicos.size;
+        
+        const tratamientosUnicos = new Set();
+        allRecords.forEach(record => {
+            record.medications?.forEach(medication => {
+                const codigo = medication.medicationCodeableConcept?.coding?.[0]?.code || 
+                              medication.medicationCodeableConcept?.text;
+                if (codigo) tratamientosUnicos.add(codigo);
+            });
+        });
+        const totalTratamientos = tratamientosUnicos.size;
+        
+        doc.text(`Total de consultas: ${totalConsultas}`, margin, yPosition);
+        yPosition += lineHeight;
+        doc.text(`Total de diagnósticos únicos: ${totalDiagnosticos}`, margin, yPosition);
+        yPosition += lineHeight;
+        doc.text(`Total de tratamientos únicos: ${totalTratamientos}`, margin, yPosition);
+        yPosition += lineHeight * 1.5;
+        
+        // 4. Registros clínicos detallados
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(subtitleStyle.fontSize);
+        doc.text('REGISTROS CLÍNICOS', margin, yPosition);
+        yPosition += lineHeight;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(normalStyle.fontSize);
+        
+        // Ordenar registros por fecha (más reciente primero)
+        const sortedRecords = [...allRecords].sort((a, b) => {
+            const dateA = a.encounter.period?.start ? new Date(a.encounter.period.start) : new Date(0);
+            const dateB = b.encounter.period?.start ? new Date(b.encounter.period.start) : new Date(0);
+            return dateB - dateA;
+        });
+        
+        sortedRecords.forEach((record, index) => {
+            // Verificar si necesitamos una nueva página
+            if (yPosition > doc.internal.pageSize.getHeight() - 30) {
+                doc.addPage();
+                yPosition = margin;
+            }
+            
+            const encounter = record.encounter;
+            const recordDate = encounter.period?.start ? formatDateTime(encounter.period.start) : 'Fecha desconocida';
+            const recordType = getEncounterTypeDisplay(encounter.class?.code);
+            
+            // Encabezado del registro
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Registro #${index + 1}: ${recordType} - ${recordDate}`, margin, yPosition);
+            yPosition += lineHeight;
+            
+            doc.setFont('helvetica', 'normal');
+            
+            // Notas generales
+            if (encounter.note && encounter.note.length > 0) {
+                doc.text('Notas generales:', margin, yPosition);
+                yPosition += lineHeight;
+                
+                const notes = doc.splitTextToSize(encounter.note[0].text, pageWidth - margin * 2);
+                doc.text(notes, margin + 5, yPosition);
+                yPosition += (notes.length * lineHeight) + lineHeight;
+            }
+            
+            // Diagnósticos
+            if (record.conditions && record.conditions.length > 0) {
+                doc.text('Diagnósticos:', margin, yPosition);
+                yPosition += lineHeight;
+                
+                record.conditions.forEach(condition => {
+                    const code = condition.code?.coding?.[0]?.code || 'No especificado';
+                    const text = condition.code?.text || 'Diagnóstico sin descripción';
+                    const severity = condition.severity?.coding?.[0]?.display || 'No especificada';
+                    
+                    const diagText = `- ${text} (${code}, Severidad: ${severity})`;
+                    const lines = doc.splitTextToSize(diagText, pageWidth - margin * 2 - 5);
+                    
+                    doc.text(lines, margin + 5, yPosition);
+                    yPosition += (lines.length * lineHeight) + lineHeight / 2;
+                });
+                
+                yPosition += lineHeight / 2;
+            }
+            
+            // Observaciones
+            if (record.observations && record.observations.length > 0) {
+                doc.text('Observaciones:', margin, yPosition);
+                yPosition += lineHeight;
+                
+                record.observations.forEach(obs => {
+                    const type = obs.code?.text || obs.code?.coding?.[0]?.display || 'Observación';
+                    const value = obs.valueQuantity?.value || 'N/A';
+                    const unit = obs.valueQuantity?.unit || '';
+                    const notes = obs.note?.[0]?.text || '';
+                    
+                    let obsText = `- ${type}: ${value} ${unit}`;
+                    if (notes) obsText += ` (Notas: ${notes})`;
+                    
+                    const lines = doc.splitTextToSize(obsText, pageWidth - margin * 2 - 5);
+                    doc.text(lines, margin + 5, yPosition);
+                    yPosition += (lines.length * lineHeight) + lineHeight / 2;
+                });
+                
+                yPosition += lineHeight / 2;
+            }
+            
+            // Tratamientos
+            if (record.medications && record.medications.length > 0) {
+                doc.text('Tratamientos:', margin, yPosition);
+                yPosition += lineHeight;
+                
+                record.medications.forEach(med => {
+                    const medication = med.medicationCodeableConcept?.text || 'Medicamento no especificado';
+                    const instructions = med.dosageInstruction?.[0]?.text || 'Instrucciones no especificadas';
+                    
+                    const medText = `- ${medication}: ${instructions}`;
+                    const lines = doc.splitTextToSize(medText, pageWidth - margin * 2 - 5);
+                    
+                    doc.text(lines, margin + 5, yPosition);
+                    yPosition += (lines.length * lineHeight) + lineHeight / 2;
+                });
+                
+                yPosition += lineHeight / 2;
+            }
+            
+            // Separador entre registros
+            doc.setDrawColor(200);
+            doc.setLineWidth(0.2);
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += lineHeight * 1.5;
+        });
+        
+        // Pie de página
+        doc.setFontSize(smallStyle.fontSize);
+        doc.setTextColor(100);
+        doc.text(`Generado el ${formatDateTime(new Date().toISOString())} por MediConnect`, 
+                pageWidth / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+        
+        // Descargar el PDF
+        doc.save(`Historial_Clinico_${patientName.replace(/\s+/g, '_')}_${formatDate(new Date().toISOString()).replace(/\//g, '-')}.pdf`);
+    }
 });

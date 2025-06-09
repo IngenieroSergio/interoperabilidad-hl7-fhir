@@ -376,4 +376,31 @@
         border-radius: 4px;
     }
 }
+
+/* Estilos para el botón de descargar HC */
+#download-hc-btn {
+    margin-right: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Ajustar el header para múltiples botones */
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .header-actions {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    #download-hc-btn, #new-record-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
 /* //////////////////////////////// */
