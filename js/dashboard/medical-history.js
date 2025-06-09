@@ -1,5 +1,21 @@
-document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>');
-document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>');
+// Con esto:
+function loadScript(url, callback) {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = callback;
+    document.head.appendChild(script);
+}
+
+// Cargar los scripts antes de inicializar la aplicación
+loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function() {
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js', function() {
+        // Inicializar la aplicación después de que los scripts estén cargados
+        initApplication();
+    });
+});
+
+// Mover el event listener DOMContentLoaded dentro de initApplication
+function initApplication() {
 document.addEventListener('DOMContentLoaded', function() {
     // Agregar al inicio del archivo, después de las otras dependencias
     // 1. Verificación de autenticación
@@ -362,9 +378,9 @@ async function loadPatientData(patientId) {
         updateMedicalRecords(allRecords);
         
         // Depuración automática en desarrollo
-        if (window.location.hostname === 'localhost') {
-            debugPatientData();
-        }
+        // if (window.location.hostname === 'localhost') {
+        //     debugPatientData();
+        // }
         
     } catch (error) {
         console.error('Error cargando datos del paciente:', error);
@@ -1663,3 +1679,4 @@ function updatePatientSelect(patients) {
         doc.save(`Historial_Clinico_${patientName.replace(/\s+/g, '_')}_${formatDate(new Date().toISOString()).replace(/\//g, '-')}.pdf`);
     }
 });
+}
