@@ -278,7 +278,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 11. Cargar datos del paciente seleccionado
+    // 11. Cargar datos del paciente seleccionado (VERSIÓN MEJORADA)
 async function loadPatientData(patientId) {
     try {
         showLoadingState();
@@ -292,37 +292,57 @@ async function loadPatientData(patientId) {
         
         // Asignar el paciente actual
         currentPatient = selectedPatient;
+        console.log('Cargando datos para paciente:', currentPatient.id);
         
-        // Mostrar información del paciente inmediatamente
-        updatePatientSummary(currentPatient);
+        // Limpiar registros anteriores
+        allRecords = [];
         
         // Cargar registros médicos
         let recordsFromFirebase = await loadRecordsFromFirebase(patientId);
         
         if (recordsFromFirebase && recordsFromFirebase.length > 0) {
+            console.log('Registros cargados desde Firebase:', recordsFromFirebase.length);
             allRecords = recordsFromFirebase;
         } else {
+            console.log('Cargando registros desde FHIR...');
+            
             // Si no hay registros en Firebase, cargar desde FHIR
             const encountersResponse = await fetch(
                 `${FHIR_SERVER}/Encounter?patient=${patientId}&_sort=-date&_count=100`,
                 { headers: { 'Accept': 'application/fhir+json' } }
             );
             
-            if (!encountersResponse.ok) throw new Error('Error al cargar historial');
-            
-            const encountersData = await encountersResponse.json();
-            const encounters = encountersData.entry?.map(entry => entry.resource) || [];
-            
-            allRecords = [];
-            for (const encounter of encounters) {
-                const record = await buildFullRecord(encounter);
-                allRecords.push(record);
+            if (encountersResponse.ok) {
+                const encountersData = await encountersResponse.json();
+                const encounters = encountersData.entry?.map(entry => entry.resource) || [];
+                
+                console.log('Encounters encontrados:', encounters.length);
+                
+                allRecords = [];
+                for (const encounter of encounters) {
+                    const record = await buildFullRecord(encounter);
+                    allRecords.push(record);
+                }
+                
+                // Guardar en Firebase para futuras consultas
+                if (allRecords.length > 0) {
+                    await saveRecordsToFirebase(patientId, allRecords);
+                }
+            } else {
+                console.log('No se pudieron cargar encounters desde FHIR');
             }
-            
-            await saveRecordsToFirebase(patientId, allRecords);
         }
         
+        console.log('Total de registros cargados:', allRecords.length);
+        
+        // Mostrar información del paciente DESPUÉS de cargar los registros
+        updatePatientSummary(currentPatient);
         updateMedicalRecords(allRecords);
+        
+        // Depuración automática en desarrollo
+        if (window.location.hostname === 'localhost') {
+            debugPatientData();
+        }
         
     } catch (error) {
         console.error('Error cargando datos del paciente:', error);
