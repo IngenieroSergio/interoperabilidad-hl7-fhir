@@ -1,22 +1,31 @@
-// Con esto:
-function loadScript(url, callback) {
-    const script = document.createElement('script');
-    script.src = url;
-    script.onload = callback;
-    document.head.appendChild(script);
+// Función para cargar scripts dinámicamente
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
 }
 
-// Cargar los scripts antes de inicializar la aplicación
-loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', function() {
-    loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js', function() {
-        // Inicializar la aplicación después de que los scripts estén cargados
-        initApplication();
-    });
-});
-
-// Mover el event listener DOMContentLoaded dentro de initApplication
-function initApplication() {
+// Cargar los scripts en secuencia
+async function loadLibraries() {
+    try {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js');
+        
+        // Aquí ya puedes usar jsPDF
+        console.log('Librerías cargadas correctamente');
+        // Tu código que usa jsPDF va aquí
+        
+    } catch (error) {
+        console.error('Error cargando las librerías:', error);
+    }
+}
+// Llamar la función
 document.addEventListener('DOMContentLoaded', function() {
+    loadLibraries();
     // Agregar al inicio del archivo, después de las otras dependencias
     // 1. Verificación de autenticación
     const userData = JSON.parse(sessionStorage.getItem('currentMediConnectUser'));
@@ -1679,4 +1688,3 @@ function updatePatientSelect(patients) {
         doc.save(`Historial_Clinico_${patientName.replace(/\s+/g, '_')}_${formatDate(new Date().toISOString()).replace(/\//g, '-')}.pdf`);
     }
 });
-}
