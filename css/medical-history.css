@@ -229,5 +229,151 @@
         max-width: 100%;
     }
 }
+/* Estilos para estadísticas reactivas */
+.stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #012E46;
+    transition: all 0.3s ease;
+    position: relative;
+    display: inline-block;
+}
 
+/* Animación cuando se está actualizando el valor */
+.stat-value.stat-updating {
+    color: #58B0D8;
+    transform: scale(1.1);
+    animation: pulse-glow 1s ease-in-out;
+}
+
+/* Animación cuando se completó la actualización */
+.stat-value.stat-updated {
+    color: #0A4F74;
+    animation: bounce-success 0.5s ease-out;
+}
+
+/* Keyframes para la animación de pulso y brillo */
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(53, 201, 242, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 20px 5px rgba(24, 118, 249, 0.2);
+    }
+}
+
+/* Keyframes para la animación de éxito */
+@keyframes bounce-success {
+    0% {
+        transform: scale(1.1);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Efecto hover mejorado para las estadísticas */
+.stat-item {
+    padding: 1rem;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-item:hover {
+    background-color: rgba(37, 99, 235, 0.05);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.stat-item:hover::before {
+    left: 100%;
+}
+
+/* Indicador de carga para cuando se están actualizando los datos */
+.stat-item.loading .stat-value::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: -20px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #e5e7eb;
+    border-top: 2px solid #2563eb;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    transform: translateY(-50%);
+}
+
+@keyframes spin {
+    0% { transform: translateY(-50%) rotate(0deg); }
+    100% { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* Mejorar la responsividad de las estadísticas */
+.patient-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+/* Efecto de contador digital */
+.stat-value {
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+    min-width: 2ch; /* Reservar espacio para al menos 2 caracteres */
+    text-align: center;
+}
+
+/* Animación de entrada para nuevos valores */
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stat-item {
+    animation: slideInUp 0.5s ease-out;
+}
+
+/* Resaltar cuando hay cambios significativos */
+.stat-value.significant-change {
+    animation: significant-pulse 2s ease-in-out;
+}
+
+@keyframes significant-pulse {
+    0%, 100% {
+        background-color: transparent;
+    }
+    25% {
+        background-color: rgba(16, 185, 129, 0.1);
+        border-radius: 4px;
+    }
+    75% {
+        background-color: rgba(16, 185, 129, 0.05);
+        border-radius: 4px;
+    }
+}
 /* //////////////////////////////// */

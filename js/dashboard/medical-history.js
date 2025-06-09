@@ -453,7 +453,7 @@ async function loadPatientData(patientId) {
     
     return record;
 }
-    // 15. Actualizar resumen del paciente
+    // 15. Actualizar resumen del paciente (VERSIÓN REACTIVA)
 function updatePatientSummary(patient) {
     if (!patient || !patient.id) {
         console.error('Paciente inválido para mostrar resumen');
@@ -466,13 +466,43 @@ function updatePatientSummary(patient) {
     const age = patient.birthDate ? calculateAge(patient.birthDate) : 'N/A';
     const identifier = patient.identifier?.[0]?.value || 'N/A';
 
-    // Filtrar registros que pertenecen SOLO a este paciente
+    // Verificar si ya existe el contenedor, si no, crearlo
+    if (!patientSummary.querySelector('.patient-summary-content')) {
+        patientSummary.innerHTML = `
+            <div class="patient-summary-content">
+                <div class="patient-avatar-large">${getInitials(name)}</div>
+                <div class="patient-info-summary">
+                    <h2>${name}</h2>
+                    <div class="patient-meta-summary">
+                        <span>${gender}, ${age} años</span>
+                        <span>Nacimiento: ${birthDate}</span>
+                        <span>ID: ${identifier}</span>
+                    </div>
+                    <div class="patient-stats">
+                        <div class="stat-item">
+                            <div class="stat-value" data-stat="consultas">0</div>
+                            <div class="stat-label">Consultas</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" data-stat="diagnosticos">0</div>
+                            <div class="stat-label">Diagnósticos</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" data-stat="tratamientos">0</div>
+                            <div class="stat-label">Tratamientos</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Calcular los nuevos valores
     const recordsForPatient = allRecords.filter(record => {
         return record.encounter?.subject?.reference === `Patient/${patient.id}` ||
                record.encounter?.patient?.reference === `Patient/${patient.id}`;
     });
 
-    // Calcular estadísticas solo con los registros del paciente
     const totalConsultas = recordsForPatient.length;
 
     // Contar diagnósticos únicos para este paciente
@@ -480,7 +510,7 @@ function updatePatientSummary(patient) {
     recordsForPatient.forEach(record => {
         record.conditions?.forEach(condition => {
             if (condition.subject?.reference === `Patient/${patient.id}` || 
-                !condition.subject) { // Asumir que pertenece si no tiene sujeto definido
+                !condition.subject) {
                 const codigo = condition.code?.coding?.[0]?.code || condition.code?.text;
                 if (codigo) diagnosticosUnicos.add(codigo);
             }
@@ -502,34 +532,105 @@ function updatePatientSummary(patient) {
     });
     const totalTratamientos = tratamientosUnicos.size;
 
-    // Generar el HTML
-    patientSummary.innerHTML = `
-        <div class="patient-summary-content">
-            <div class="patient-avatar-large">${getInitials(name)}</div>
-            <div class="patient-info-summary">
-                <h2>${name}</h2>
-                <div class="patient-meta-summary">
-                    <span>${gender}, ${age} años</span>
-                    <span>Nacimiento: ${birthDate}</span>
-                    <span>ID: ${identifier}</span>
-                </div>
-                <div class="patient-stats">
-                    <div class="stat-item">
-                        <div class="stat-value">${totalConsultas}</div>
-                        <div class="stat-label">Consultas</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">${totalDiagnosticos}</div>
-                        <div class="stat-label">Diagnósticos</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">${totalTratamientos}</div>
-                        <div class="stat-label">Tratamientos</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+    // Actualizar los valores de forma animada
+    animateStatValue('consultas', totalConsultas);
+    animateStatValue('diagnosticos', totalDiagnosticos);
+    animateStatValue('tratamientos', totalTratamientos);
+}
+
+// Función para animar el cambio de valores en las estadísticas
+function animateStatValue(statType, newValue) {
+    const statElement = document.querySelector(`[data-stat="${statType}"]`);
+    if (!statElement) return;
+
+    const currentValue = parseInt(statElement.textContent) || 0;
+    
+    // Si el valor es el mismo, no hacer nada
+    if (currentValue === newValue) return;
+
+    // Agregar clase de animación
+    statElement.classList.add('stat-updating');
+    
+    // Animar el contador
+    const duration = 1000; // 1 segundo
+    const startTime = performance.now();
+    const startValue = currentValue;
+    const valueChange = newValue - startValue;
+
+    function updateCounter(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Usar easing para suavizar la animación
+        const easedProgress = easeOutCubic(progress);
+        const currentDisplayValue = Math.round(startValue + (valueChange * easedProgress));
+        
+        statElement.textContent = currentDisplayValue;
+        
+        // Agregar efecto de pulso cuando el valor cambia
+        if (progress < 1) {
+            requestAnimationFrame(updateCounter);
+        } else {
+            // Animación completada
+            statElement.classList.remove('stat-updating');
+            statElement.classList.add('stat-updated');
+            
+            // Remover la clase después de la animación
+            setTimeout(() => {
+                statElement.classList.remove('stat-updated');
+            }, 500);
+        }
+    }
+    
+    requestAnimationFrame(updateCounter);
+}
+
+// Función de easing para suavizar la animación
+function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+// Función para actualizar estadísticas en tiempo real (llamar después de guardar un registro)
+function updatePatientStatsRealTime() {
+    if (currentPatient) {
+        // Recalcular solo las estadísticas sin recrear todo el HTML
+        const recordsForPatient = allRecords.filter(record => {
+            return record.encounter?.subject?.reference === `Patient/${currentPatient.id}` ||
+                   record.encounter?.patient?.reference === `Patient/${currentPatient.id}`;
+        });
+
+        const totalConsultas = recordsForPatient.length;
+
+        const diagnosticosUnicos = new Set();
+        recordsForPatient.forEach(record => {
+            record.conditions?.forEach(condition => {
+                if (condition.subject?.reference === `Patient/${currentPatient.id}` || 
+                    !condition.subject) {
+                    const codigo = condition.code?.coding?.[0]?.code || condition.code?.text;
+                    if (codigo) diagnosticosUnicos.add(codigo);
+                }
+            });
+        });
+        const totalDiagnosticos = diagnosticosUnicos.size;
+
+        const tratamientosUnicos = new Set();
+        recordsForPatient.forEach(record => {
+            record.medications?.forEach(medication => {
+                if (medication.subject?.reference === `Patient/${currentPatient.id}` || 
+                    !medication.subject) {
+                    const codigo = medication.medicationCodeableConcept?.coding?.[0]?.code || 
+                                  medication.medicationCodeableConcept?.text;
+                    if (codigo) tratamientosUnicos.add(codigo);
+                }
+            });
+        });
+        const totalTratamientos = tratamientosUnicos.size;
+
+        // Actualizar con animación
+        animateStatValue('consultas', totalConsultas);
+        animateStatValue('diagnosticos', totalDiagnosticos);
+        animateStatValue('tratamientos', totalTratamientos);
+    }
 }
     // 16. Actualizar lista de registros médicos
     function updateMedicalRecords(records) {
@@ -686,65 +787,194 @@ function updatePatientSummary(patient) {
         newRecordModal.style.display = 'flex';
     }
 
-    // 19. Guardar nuevo registro médico
-    async function saveMedicalRecord() {
-        const form = document.getElementById('record-form');
-        const recordType = document.getElementById('record-type').value;
-        const recordDate = document.getElementById('record-date').value;
-        const notes = document.getElementById('record-notes').value;
-        
-        if (!currentPatient || !recordType || !recordDate) {
-            alert('Complete todos los campos requeridos');
-            return;
-        }
-        
-        try {
-            // 1. Crear recurso Encounter (consulta)
-            const encounter = await createEncounter(recordDate);
-            
-            // 2. Crear recursos según el tipo de registro
-            let newCondition = null;
-            let newMedication = null;
-            let newObservation = null;
-            
-            if (recordType === 'diagnosis') {
-                newCondition = await createDiagnosis(encounter);
-            } else if (recordType === 'treatment') {
-                newMedication = await createTreatment(encounter);
-            } else if (recordType === 'observation') {
-                newObservation = await createObservation(encounter);
-            }
-            
-            // 3. Agregar notas generales si existen
-            if (notes) {
-                await updateEncounterWithNotes(encounter.id, notes);
-            }
-            
-            // 4. Construir el nuevo registro para Firebase
-            const newRecord = {
-                encounter: encounter,
-                conditions: newCondition ? [newCondition] : [],
-                observations: newObservation ? [newObservation] : [],
-                medications: newMedication ? [newMedication] : [],
-                lastUpdated: new Date().toISOString()
-            };
-            
-            // 5. Agregar el nuevo registro a Firebase
-            const newRecordRef = database.ref(`patients/${currentPatient.id}/records`).push();
-            await newRecordRef.set(newRecord);
-            
-            // 6. Actualizar la lista de registros localmente
-            allRecords.unshift(newRecord);
-            updateMedicalRecords(allRecords);
-            
-            // 7. Cerrar modal
-            newRecordModal.style.display = 'none';
-            
-        } catch (error) {
-            console.error('Error guardando registro:', error);
-            alert('Error al guardar el registro: ' + error.message);
-        }
+    // 19. Guardar nuevo registro médico (VERSIÓN REACTIVA)
+async function saveMedicalRecord() {
+    const form = document.getElementById('record-form');
+    const recordType = document.getElementById('record-type').value;
+    const recordDate = document.getElementById('record-date').value;
+    const notes = document.getElementById('record-notes').value;
+    
+    if (!currentPatient || !recordType || !recordDate) {
+        alert('Complete todos los campos requeridos');
+        return;
     }
+    
+    try {
+        // Mostrar indicador de carga en las estadísticas
+        document.querySelectorAll('.stat-item').forEach(item => {
+            item.classList.add('loading');
+        });
+
+        // 1. Crear recurso Encounter (consulta)
+        const encounter = await createEncounter(recordDate);
+        
+        // 2. Crear recursos según el tipo de registro
+        let newCondition = null;
+        let newMedication = null;
+        let newObservation = null;
+        
+        if (recordType === 'diagnosis') {
+            newCondition = await createDiagnosis(encounter);
+        } else if (recordType === 'treatment') {
+            newMedication = await createTreatment(encounter);
+        } else if (recordType === 'observation') {
+            newObservation = await createObservation(encounter);
+        }
+        
+        // 3. Agregar notas generales si existen
+        if (notes) {
+            await updateEncounterWithNotes(encounter.id, notes);
+        }
+        
+        // 4. Construir el nuevo registro para Firebase
+        const newRecord = {
+            encounter: encounter,
+            conditions: newCondition ? [newCondition] : [],
+            observations: newObservation ? [newObservation] : [],
+            medications: newMedication ? [newMedication] : [],
+            lastUpdated: new Date().toISOString()
+        };
+        
+        // 5. Agregar el nuevo registro a Firebase
+        const newRecordRef = database.ref(`patients/${currentPatient.id}/records`).push();
+        await newRecordRef.set(newRecord);
+        
+        // 6. Actualizar la lista de registros localmente
+        allRecords.unshift(newRecord);
+        
+        // 7. Actualizar la UI de forma reactiva
+        updateMedicalRecords(allRecords);
+        
+        // 8. Actualizar estadísticas con animación
+        setTimeout(() => {
+            // Remover indicadores de carga
+            document.querySelectorAll('.stat-item').forEach(item => {
+                item.classList.remove('loading');
+            });
+            
+            // Actualizar estadísticas de forma reactiva
+            updatePatientStatsRealTime();
+            
+            // Resaltar si hay cambios significativos (más de 5 registros nuevos)
+            if (allRecords.length > 5) {
+                document.querySelectorAll('.stat-value').forEach(stat => {
+                    stat.classList.add('significant-change');
+                    setTimeout(() => {
+                        stat.classList.remove('significant-change');
+                    }, 2000);
+                });
+            }
+        }, 500); // Pequeño delay para que se vea la animación de carga
+        
+        // 9. Cerrar modal
+        newRecordModal.style.display = 'none';
+        
+        // 10. Mostrar notificación de éxito
+        showSuccessNotification('Registro médico guardado exitosamente');
+        
+    } catch (error) {
+        console.error('Error guardando registro:', error);
+        
+        // Remover indicadores de carga en caso de error
+        document.querySelectorAll('.stat-item').forEach(item => {
+            item.classList.remove('loading');
+        });
+        
+        alert('Error al guardar el registro: ' + error.message);
+    }
+}
+
+// Función para mostrar notificaciones de éxito
+function showSuccessNotification(message) {
+    // Crear elemento de notificación si no existe
+    let notification = document.getElementById('success-notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'success-notification';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #10b981;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            max-width: 300px;
+        `;
+        document.body.appendChild(notification);
+    }
+    
+    notification.textContent = message;
+    
+    // Mostrar notificación
+    setTimeout(() => {
+        notification.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Ocultar después de 3 segundos
+    setTimeout(() => {
+        notification.style.transform = 'translateX(100%)';
+    }, 3000);
+}
+
+// También actualizar la función loadPatientData para usar la actualización reactiva
+async function loadPatientDataReactive(patientId) {
+    try {
+        showLoadingState();
+        
+        const selectedPatient = allPatients.find(p => p.id === patientId);
+        
+        if (!selectedPatient) {
+            throw new Error('Paciente no encontrado en la lista local');
+        }
+        
+        currentPatient = selectedPatient;
+        allRecords = [];
+        
+        // Crear la estructura básica primero
+        updatePatientSummary(currentPatient);
+        
+        // Cargar registros médicos
+        let recordsFromFirebase = await loadRecordsFromFirebase(patientId);
+        
+        if (recordsFromFirebase && recordsFromFirebase.length > 0) {
+            allRecords = recordsFromFirebase;
+        } else {
+            const encountersResponse = await fetch(
+                `${FHIR_SERVER}/Encounter?patient=${patientId}&_sort=-date&_count=100`,
+                { headers: { 'Accept': 'application/fhir+json' } }
+            );
+            
+            if (encountersResponse.ok) {
+                const encountersData = await encountersResponse.json();
+                const encounters = encountersData.entry?.map(entry => entry.resource) || [];
+                
+                allRecords = [];
+                for (const encounter of encounters) {
+                    const record = await buildFullRecord(encounter);
+                    allRecords.push(record);
+                }
+                
+                if (allRecords.length > 0) {
+                    await saveRecordsToFirebase(patientId, allRecords);
+                }
+            }
+        }
+        
+        // Actualizar UI con animaciones
+        updateMedicalRecords(allRecords);
+        updatePatientStatsRealTime(); // Usar la versión reactiva
+        
+    } catch (error) {
+        console.error('Error cargando datos del paciente:', error);
+        clearPatientData();
+        showError('Error al cargar datos del paciente: ' + error.message);
+    }
+}
 
     // 20. Funciones para crear recursos FHIR
     async function createEncounter(dateTime) {
